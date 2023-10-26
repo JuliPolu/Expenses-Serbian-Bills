@@ -13,13 +13,13 @@ Calculate Expenses from Bills (Serbia)
 
 - Create files for environmental variables for postgres database and telegram bot API
 
-- Raise 2 docker containers (with database and telegram bot)
+- Raise 2 docker containers (with database and telegram bot) <br>
 `docker-compose up --build`
 
-- Available Telegramm bot commands:
-`/add`       to add bill (URL)
-`/count`     to count all items in DB
-`/by_month`  total expenses by month
+- Available Telegramm bot commands: <br>
+`/add`       to add bill (URL) <br>
+`/count`     to count all items in DB <br>
+`/by_month`  total expenses by month <br>
 
 
 
