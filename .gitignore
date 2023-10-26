@@ -1,0 +1,6 @@
+__pycache__
+*.env
+*.env_db
+venv
+tg_bot/rachun_db_20230812.csv
+./SUPPORT
