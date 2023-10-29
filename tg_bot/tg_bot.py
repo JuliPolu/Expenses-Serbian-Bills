@@ -6,7 +6,11 @@ import nest_asyncio
 import pandas as pd
 import calendar
 from aiogram import Bot, Dispatcher, executor, types
-import RACHUN.tg_bot.racun_library as rachun
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.dispatcher import FSMContext
+import racun_library as rachun
+from racun_library import UrlProcess
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
 
 
 logging.basicConfig(
@@ -14,8 +18,6 @@ logging.basicConfig(
     datefmt="%d-%b-%y %H:%M:%S",
     level=logging.INFO,
 )
-
-# logging.getLogger('pyppeteer').setLevel(logging.DEBUG)
 
 APP_TOKEN = os.environ.get("APP_TOKEN")
 # Database connection parameters
@@ -26,7 +28,8 @@ DB_HOST = os.environ.get("DB_HOST")
 DB_PORT = os.environ.get("DB_PORT")
 
 bot = Bot(token=APP_TOKEN)
-dp = Dispatcher(bot)
+storage = MemoryStorage()
+dp = Dispatcher(bot, storage=storage)
 
 conn = psycopg2.connect(
     dbname=DB_NAME,
@@ -36,22 +39,37 @@ conn = psycopg2.connect(
     port=DB_PORT,
 )
 
+async def send_command_keyboard(message: types.Message):
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    btn_add = KeyboardButton("/add")
+    btn_count = KeyboardButton("/count")
+    btn_by_month = KeyboardButton("/by_month")
+
+    # Add buttons to the markup
+    markup.add(btn_add, btn_count, btn_by_month)
+    
+    await message.answer("Please select a command:", reply_markup=markup)
+
+
 @dp.message_handler(commands=['start', 'help'])
 async def send_welcome(message: types.Message):
     """
     This handler will be called when user sends `/start` or `/help` command
     """
-    await message.reply("Please select command:\n \
-   /add       to add rachun\n \
-   /count     to count all items in DB\n \
-   /by_month  total expenses by month" )
-
+    await send_command_keyboard(message)
+    
 
 @dp.message_handler(commands="add")
-async def add_task(payload: types.Message):
-    url = payload.get_args().strip()
-    data = []
+async def add_task_command(message: types.Message):
+    await message.answer("Please provide the URL to add Rachun:")
+    await UrlProcess.waiting_for_url.set()
 
+
+
+@dp.message_handler(state=UrlProcess.waiting_for_url)
+async def process_url(message: types.Message, state: FSMContext):
+    url = message.text.strip() 
+    data = []
     # Check if URL is already in the DB
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM products WHERE URL = %s", (url,))
@@ -59,27 +77,37 @@ async def add_task(payload: types.Message):
     cursor.close()
     # If URL is found in the DB, notify user and return
     if count > 0:
-        await payload.reply(f"URL is already present in the DB.", parse_mode="Markdown")
-        return
+        await message.reply(f"URL is already present in the DB", parse_mode="Markdown")
+        pass
     # Else scrape rachun data and insert data into the DB table
     else:
         logging.info(f"Starting collecting data")
-        await payload.reply(f"Starting collecting data")
+        await message.reply(f"Starting collecting data")
+        
         await rachun.scrape_main(url, data)
-        logging.info(f"Data_Collected")
-        df_add = pd.DataFrame(data)
-        rachun.transform(df_add)
-        cursor = conn.cursor()
-        # Insert data into the table
-        for index, row in df_add.iterrows():
-            cursor.execute(
-                "INSERT INTO products (Name, Quantity, UnitPrice, TotalPrice, Date, Shop_name, Category, URL) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-                (row["Name"], row["Quantity"], row["UnitPrice"], row["TotalPrice"], row["Date"], row["Shop_name"], row["Category"], row["URL"])
-            )
-        conn.commit()
-        cursor.close()
-        logging.info(f"Added {len(df_add)} items to DB")
-        await payload.reply(f"Added {len(df_add)} items to DB", parse_mode="Markdown")
+        logging.info(f"Collected {len(data)} items")
+        logging.info(data)
+        
+        if len(data) > 0 :
+            df_add = pd.DataFrame(data)
+            rachun.transform(df_add)
+            cursor = conn.cursor()
+            # Insert data into the table
+            for index, row in df_add.iterrows():
+                cursor.execute(
+                    "INSERT INTO products (Name, Quantity, UnitPrice, TotalPrice, Date, Shop_name, Category, URL) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                    (row["Name"], row["Quantity"], row["UnitPrice"], row["TotalPrice"], row["Date"], row["Shop_name"], row["Category"], row["URL"])
+                )
+            conn.commit()
+            
+            cursor.close()
+            logging.info(f"Added {len(df_add)} items to DB")
+            await message.reply(f"Added {len(df_add)} items to DB", parse_mode="Markdown")
+        else: 
+            await message.reply(f"No items were added to DB, check RACHUN!", parse_mode="Markdown")
+        
+    await state.finish()
+    await send_command_keyboard(message)
 
 
 @dp.message_handler(commands="count")
@@ -92,6 +120,8 @@ async def add_task(payload: types.Message):
     cursor.close()
     logging.info(f"Total items in DB: {total_rows}")
     await payload.reply(f"Total items in DB: *{total_rows}*", parse_mode="Markdown")
+    
+    await send_command_keyboard(payload)
 
 
 @dp.message_handler(commands="by_month")
@@ -112,13 +142,15 @@ async def total_expenses_by_month(payload: types.Message):
     table_content = ""
     for row in results:
         month_num = int(row[0])
-        month_name = calendar.month_name[month_num]
+        month_name = calendar.month_name[month_num]  # Using the calendar module to get the month name
         total_expense = round(row[1], 2)
         table_content += f"{month_name} | ${total_expense}\n"
     # Sending the table to Telegram
     table_msg = table_header + table_content
     await payload.reply(table_msg, parse_mode="Markdown")
-
+    
+    await send_command_keyboard(payload)
+    
 
 async def clear_updates(bot_token):
     bot = Bot(token=bot_token)
@@ -130,6 +162,7 @@ async def clear_updates(bot_token):
             break
         offset = updates[-1].update_id + 1
 
+    # await (await bot.get_session()).close()
     await bot.session.close()
 
 

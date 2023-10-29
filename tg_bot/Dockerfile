@@ -47,7 +47,7 @@ RUN python -m pip install --upgrade pip && \
 
 WORKDIR /app
 
-COPY tg_bot.py racun_library.py ddl_init.py entrypoint.sh rachun_db_20230812.csv download_chromium.py ./
+COPY ./ ./
 
 RUN chmod +x entrypoint.sh
 
