@@ -6,31 +6,47 @@ from googletrans import Translator
 from datetime import datetime
 import pandas as pd
 
+from aiogram.dispatcher.filters.state import State, StatesGroup
+
+class UrlProcess(StatesGroup):
+    waiting_for_url = State()
+
+
 logging.basicConfig(
     format="%(levelname)s: %(asctime)s - %(message)s",
     datefmt="%d-%b-%y %H:%M:%S",
     level=logging.INFO,
 )
 
-versionn = eval(pyppeteer.__chromium_revision__)
-
-
 # Function to scrape data from rachun page
 async def get_page_content(browser, url, data):
-    logging.info(f"{versionn}")
     page = await browser.newPage()
     logging.info(f"Page opened")
     await page.goto(url)
-    # Use XPath to find the element
-    element1 = await page.Jx("//*[@id='sdcDateTimeLabel']/text()")
-    property = await element1[0].getProperty('nodeValue')
-    date_time = await property.jsonValue()
-    # date_time = await (await element1[0].getProperty('nodeValue')).jsonValue()
+    logging.info(f"url")
+    # await page.screenshot({'path': 'url.png'})
+    # logging.info(f"screenshot")
+    element1 = await page.Jx("//*[@id='sdcDateTimeLabel']")
+    if element1:
+        property = await element1[0].getProperty('textContent')
+        date_time = await property.jsonValue()
+        logging.info(date_time)
+    else:
+        logging.info(f"date not found")
+
     date = datetime.strptime(date_time.strip(), '%d.%m.%Y. %H:%M:%S').date()
-    element2 = await page.Jx("//*[@id='shopFullNameLabel']/text()")
-    shop = await (await element2[0].getProperty('nodeValue')).jsonValue()
+    logging.info(f"element1")
+    
+    element2 = await page.Jx("//*[@id='shopFullNameLabel']")
+    if element1:
+        property2 = await element2[0].getProperty('textContent')
+        shop = await property2.jsonValue()
+        logging.info(shop)
+    else:
+        logging.info(f"shop not found")    
     element = await page.xpath("/html/body/div/div/form/div[3]/div/div/div[1]/h5/a")   
     # Click the first matching element
+    logging.info(f"element")
     await element[0].click()
     logging.info(f"click")
     html_content = await page.evaluate('''() => {
@@ -41,7 +57,9 @@ async def get_page_content(browser, url, data):
                 }, 3000);  // delay of 3000 milliseconds (3 seconds)
             });
         }''')
+    logging.info(f"page.evaluate")
     await page.close()
+    logging.info(f"Page closed")
     # Create a BeautifulSoup object and specify the parser
     soup = BeautifulSoup(html_content, 'html.parser')
 
@@ -97,6 +115,7 @@ CATEGORIES = {
     'Alco': ['Malbec', 'South African Chardon', 'Gorki list', 'Bianco Terre Sicilia', 'shiraz', 'Gin'],
     'Cloths': ['PALM', 'T-shirt', 'HAMA K.PUNJAC', 'BP500 BLACK 25L', 'Busty Primorac',  'Khaki', 'sneakers', 'fit500', 'Raiders', 'TELESCOPS', 'Centrum'],
     'Electronics': ['Whiteshark', 'USB-C-HDMI', 'KACKET ULTRAILIGHT VISOR', 'Kingston', 'cable'],
+    'FUEL': ['BMB-95'],
 }
 
 translator = Translator()
@@ -134,4 +153,6 @@ def transform(df):
 
     df.loc[df['Shop_name'].str.contains('Gigatron', case=False, na=False), 'Category'] = 'Electronics'
 
+
     return df
+
