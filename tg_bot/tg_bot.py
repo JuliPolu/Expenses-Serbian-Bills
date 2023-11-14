@@ -44,9 +44,11 @@ async def send_command_keyboard(message: types.Message):
     btn_add = KeyboardButton("/add")
     btn_count = KeyboardButton("/count")
     btn_by_month = KeyboardButton("/by_month")
+    btn_by_category = KeyboardButton("/by_category")
+    
 
     # Add buttons to the markup
-    markup.add(btn_add, btn_count, btn_by_month)
+    markup.add(btn_add, btn_count, btn_by_month, btn_by_category)
     
     await message.answer("Please select a command:", reply_markup=markup)
 
@@ -150,7 +152,47 @@ async def total_expenses_by_month(payload: types.Message):
     await payload.reply(table_msg, parse_mode="Markdown")
     
     await send_command_keyboard(payload)
-    
+
+
+
+@dp.message_handler(commands="by_category")
+async def summary_by_category_command(message: types.Message):
+    await message.answer("Please enter the month number (1-12) for the summary by category:")
+    await SummaryProcess.waiting_for_month.set()
+
+@dp.message_handler(state = SummaryProcess.waiting_for_month)
+async def process_month(message: types.Message, state: FSMContext):
+    month = message.text.strip()
+    if not month.isdigit() or not 1 <= int(month) <= 12:
+        await message.reply("Please enter a valid month number (1-12).")
+        return
+
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT Category, SUM(TotalPrice) AS total_expense
+    FROM products
+    WHERE EXTRACT(MONTH FROM Date) = %s
+    GROUP BY Category;
+    """, (month,))
+    results = cursor.fetchall()
+    cursor.close()
+
+    if not results:
+        await message.reply("No data found for the selected month.")
+    else:
+        # Format the output
+        response = "Category | Total Expense\n"
+        response += "---------------------------\n"
+        for category, total_expense in results:
+            response += f"{category} | ${round(total_expense, 2)}\n"
+
+        await message.reply(response, parse_mode="Markdown")
+
+    await state.finish()
+    await send_command_keyboard(message)
+
+class SummaryProcess(StatesGroup):
+    waiting_for_month = State()  
 
 async def clear_updates(bot_token):
     bot = Bot(token=bot_token)
