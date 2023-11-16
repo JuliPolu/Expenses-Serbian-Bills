@@ -20,6 +20,7 @@ Calculate Expenses from Bills (Serbia)
 `/add`       to add bill (URL) <br>
 `/count`     to count all items in DB <br>
 `/by_month`  total expenses by month <br>
+`/by_category`  summary of expenses by categories by month <br>
 
 
 
