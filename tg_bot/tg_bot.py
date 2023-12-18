@@ -8,9 +8,10 @@ import calendar
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.dispatcher import FSMContext
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher.filters.state import State, StatesGroup
 import racun_library as rachun
 from racun_library import UrlProcess
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
 
 
 logging.basicConfig(
@@ -46,7 +47,6 @@ async def send_command_keyboard(message: types.Message):
     btn_by_month = KeyboardButton("/by_month")
     btn_by_category = KeyboardButton("/by_category")
     
-
     # Add buttons to the markup
     markup.add(btn_add, btn_count, btn_by_month, btn_by_category)
     
@@ -65,8 +65,6 @@ async def send_welcome(message: types.Message):
 async def add_task_command(message: types.Message):
     await message.answer("Please provide the URL to add Rachun:")
     await UrlProcess.waiting_for_url.set()
-
-
 
 @dp.message_handler(state=UrlProcess.waiting_for_url)
 async def process_url(message: types.Message, state: FSMContext):
@@ -154,6 +152,8 @@ async def total_expenses_by_month(payload: types.Message):
     await send_command_keyboard(payload)
 
 
+class SummaryProcess(StatesGroup):
+    waiting_for_month = State()
 
 @dp.message_handler(commands="by_category")
 async def summary_by_category_command(message: types.Message):
@@ -191,8 +191,6 @@ async def process_month(message: types.Message, state: FSMContext):
     await state.finish()
     await send_command_keyboard(message)
 
-class SummaryProcess(StatesGroup):
-    waiting_for_month = State()  
 
 async def clear_updates(bot_token):
     bot = Bot(token=bot_token)
